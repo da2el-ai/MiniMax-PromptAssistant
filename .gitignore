@@ -1,0 +1,13 @@
+.claude/
+CLAUDE.md
+
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+node_modules/
+# グローバル設定で除外されているが、npm ci に必要なので追跡する
+!frontend/package-lock.json
+dist/
+.env
+.DS_Store

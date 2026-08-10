@@ -1,0 +1,36 @@
+[project]
+name = "minimax-prompt-assistant"
+version = "1.0.0"
+description = "動画生成 AI「MiniMax-H3」用の英語プロンプトを日本語入力から生成する"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "httpx>=0.27",
+  "pydantic>=2.9",
+  "python-dotenv>=1.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# アプリケーションとして実行するだけなので、パッケージとしては何も配置しない。
+# この指定により pip install . でも依存だけが導入される
+[tool.setuptools]
+py-modules = []
+
+[tool.uv]
+# uv からもパッケージ化せず、依存の導入のみを行う
+package = false
+
+# 型チェック(Pyright / Pylance)の設定。エディタ上の表示にのみ影響する
+[tool.pyright]
+# .venv を参照させる。指定しないと fastapi などが未解決のインポートになる
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.10"
+include = ["backend", "serve.py"]
+exclude = ["**/node_modules", "**/__pycache__", ".venv"]

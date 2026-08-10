@@ -1,0 +1,71 @@
+name: Release
+
+# v1.0.0 形式のタグを push したときだけ動かす。
+# 末尾に -beta などが付くタグには反応しない
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+# Release の作成に必要
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリを取得する
+        uses: actions/checkout@v4
+
+      - name: タグと pyproject.toml のバージョンが一致することを確認する
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(sed -nE 's/^version *= *"([^"]+)".*/\1/p' pyproject.toml | head -n 1)
+          if [ "$tag" != "$version" ]; then
+            echo "::error::タグ ${GITHUB_REF_NAME} と pyproject.toml の version (${version}) が一致しません"
+            exit 1
+          fi
+          echo "バージョン ${version} を配布します"
+
+      - name: Node.js を用意する
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # dist はリポジトリに含めていないため、ここで生成する
+      - name: フロントエンドをビルドする
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: 配布物をまとめる
+        run: |
+          name="MiniMax-PromptAssistant-${GITHUB_REF_NAME}"
+          mkdir -p "release/${name}/frontend"
+
+          cp -r backend img "release/${name}/"
+          cp -r frontend/dist "release/${name}/frontend/"
+          cp CONTRIBUTING.md LICENSE README.md pyproject.toml serve.py uv.lock "release/${name}/"
+
+          # 環境依存の設定やキャッシュが紛れ込まないようにする(通常は checkout に含まれない)
+          rm -f "release/${name}/backend/.env"
+          find "release/${name}" -name '__pycache__' -type d -prune -exec rm -rf {} +
+
+          (cd release && zip -qr "${name}.zip" "${name}")
+          echo "ASSET=release/${name}.zip" >> "$GITHUB_ENV"
+
+          echo "同梱するファイル:"
+          find "release/${name}" -type f | sort
+
+      - name: Release を作成する
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ASSET" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
