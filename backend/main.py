@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger(__name__)
 
 # 接続先の取り違えにすぐ気付けるよう、起動時に設定値を出す
-logger.info("llama-server 接続先: %s", settings.llm_base_url)
+logger.info("LLM API 接続先: %s", settings.llm_base_url)
 
 # ビルド済みフロントエンドの置き場所(npm run build の出力先)
 DIST_DIR = Path(__file__).parent.parent / "frontend" / "dist"
