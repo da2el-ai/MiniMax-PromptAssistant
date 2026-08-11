@@ -146,6 +146,12 @@ button {
   white-space: nowrap;
 }
 
+.topbar__actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
 .conn {
   display: flex;
   align-items: center;
@@ -373,6 +379,11 @@ button {
 .btn:hover:not(:disabled) {
   background: oklch(0.95 0.005 85);
   border-color: oklch(0.8 0.008 85);
+}
+
+.btn:disabled {
+  color: var(--disabled-fg);
+  cursor: default;
 }
 
 .btn--sm {

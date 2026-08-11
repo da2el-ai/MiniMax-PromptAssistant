@@ -48,24 +48,36 @@ function flushSave(): void {
   saveRequest(form)
 }
 
-// 疎通状態は 5 秒間隔でポーリングして更新する
-const HEALTH_INTERVAL_MS = 5000
+// 疎通状態は起動時に一度だけ確認する。外部の従量課金 API でも
+// 待機中に費用が発生しないよう、以降はボタン操作でのみ確認する
 const llmOk = ref(false)
-const llmStatus = ref('確認中…')
-let healthTimer: number | undefined
+const llmChecking = ref(false)
+const llmStatus = ref('接続を確認中…')
 
-async function pollHealth(): Promise<void> {
+async function checkHealth(): Promise<void> {
+  llmChecking.value = true
+  llmStatus.value = '接続を確認中…'
   try {
     const health = await fetchHealth()
     llmOk.value = health.llm
     llmStatus.value = health.llm
-      ? `llama-server に接続できます(${health.llmBaseUrl})`
-      : `llama-server に接続できません(${health.llmBaseUrl}): ${health.detail}`
+      ? `LLM API に接続できます(${health.llmBaseUrl})`
+      : `LLM API に接続できません(${health.llmBaseUrl}): ${health.detail}`
   } catch (caught) {
     llmOk.value = false
     llmStatus.value = `バックエンドに接続できません: ${(caught as Error).message}`
+  } finally {
+    llmChecking.value = false
   }
 }
+
+// 確認中はドットを中立色(既定色)のままにする
+const connClass = computed(() => {
+  if (llmChecking.value) {
+    return ''
+  }
+  return llmOk.value ? 'conn--ok' : 'conn--ng'
+})
 
 /** Ctrl + Enter / Command + Enter で生成する。 */
 function onKeydown(event: KeyboardEvent): void {
@@ -78,17 +90,13 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(() => {
-  void pollHealth()
-  healthTimer = window.setInterval(() => void pollHealth(), HEALTH_INTERVAL_MS)
+  void checkHealth()
   window.addEventListener('keydown', onKeydown)
   // 再読み込みや閉じる操作では onUnmounted が呼ばれないため、ここでも保存する
   window.addEventListener('beforeunload', flushSave)
 })
 
 onUnmounted(() => {
-  if (healthTimer !== undefined) {
-    window.clearInterval(healthTimer)
-  }
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('beforeunload', flushSave)
   flushSave()
@@ -210,12 +218,17 @@ function resetAll(): void {
   <header class="topbar">
     <div class="topbar__left">
       <h1 class="topbar__title">MiniMax-H3 プロンプト作成アシスタント</h1>
-      <div class="conn" :class="llmOk ? 'conn--ok' : 'conn--ng'">
+      <div class="conn" :class="connClass">
         <span class="conn__dot" aria-hidden="true"></span>
         <span class="conn__text">{{ llmStatus }}</span>
       </div>
     </div>
-    <button type="button" class="btn" @click="clearOpen = true">入力をクリア</button>
+    <div class="topbar__actions">
+      <button type="button" class="btn" :disabled="llmChecking" @click="checkHealth">
+        {{ llmChecking ? '確認中…' : '接続確認' }}
+      </button>
+      <button type="button" class="btn" @click="clearOpen = true">入力をクリア</button>
+    </div>
   </header>
 
   <main class="main">
