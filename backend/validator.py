@@ -297,10 +297,4 @@ def validate(
     warnings.append(
       "FL2VA は単一ショットが推奨です。複数ショットでは最初と最後の補間が意図どおりにならないことがあります。"
     )
-  word_count = len(body.split())
-  minimum = 250 if request.mode is Mode.RF2VA else 40 * len(request.shots)
-  if word_count < minimum:
-    warnings.append(
-      f"本文が短めです({word_count} 語)。描写を増やしたい場合は各ショットの説明を詳しく入力してください。"
-    )
   return violations, warnings
