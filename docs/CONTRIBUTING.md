@@ -1,11 +1,11 @@
 # 開発ガイド
 
 MiniMax-PromptAssistant をソースから動かす場合の手順です。使うだけであれば
-[README.md](README.md) のセットアップに従ってください。
+[README.md](../README.md) のセットアップに従ってください。
 
 ## 前提
 
-README の[動作環境](README.md#動作環境)に加えて **Node.js 20 以上**が必要です。
+README の[動作環境](../README.md#動作環境)に加えて **Node.js 20 以上**が必要です。
 フロントエンドのビルド結果(`frontend/dist`)はリポジトリに含めていないため、
 自分でビルドする必要があります。
 
@@ -64,12 +64,12 @@ curl http://127.0.0.1:8000/api/health
 | エンドポイント | 説明 |
 |---|---|
 | `POST /api/generate` | 日本語の入力から英語プロンプトを生成する |
-| `GET /api/health` | バックエンドと llama-server の疎通を返す |
+| `GET /api/health` | バックエンドと LLM API の疎通を返す |
 
 ## リリースを作る
 
 `v1.0.0` 形式のタグを push すると、GitHub Actions が配布用 zip を作って Releases に公開します
-([.github/workflows/release.yml](.github/workflows/release.yml))。
+([.github/workflows/release.yml](../.github/workflows/release.yml))。
 
 1. `pyproject.toml` の `version` を新しいバージョンに更新してコミットする
 2. 同じ番号でタグを打って push する
@@ -91,7 +91,7 @@ git push origin v1.0.0
 | `frontend/dist/` | ワークフロー内でビルドしたもの |
 | `img/` | README の画像 |
 | `serve.py` / `pyproject.toml` / `uv.lock` | 起動と依存の定義 |
-| `README.md` / `CONTRIBUTING.md` / `LICENSE` | ドキュメント |
+| `README.md` / `docs/` / `LICENSE` | ドキュメント |
 
 リリースノートは、前回のタグからのコミットを元に GitHub が自動生成します。
 
@@ -101,11 +101,12 @@ git push origin v1.0.0
 MiniMax-PromptAssistant/
   pyproject.toml         # Python の依存定義
   serve.py               # 起動スクリプト(uv run serve.py)
+  docs/                  # 開発ガイド・LLM API のセットアップ手順
   backend/
     main.py              # FastAPI アプリ本体・フロントエンドの配信
     config.py            # 環境変数による設定
     models.py            # リクエスト/レスポンスのモデル
-    llm_client.py        # llama-server クライアント(フォールバック処理を含む)
+    llm_client.py        # LLM API クライアント(フォールバック処理を含む)
     prompt_builder.py    # システムプロンプト構築・定型部分の確定
     validator.py         # フォーマット検証
     .env.example

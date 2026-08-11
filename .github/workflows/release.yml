@@ -48,9 +48,9 @@ jobs:
           name="MiniMax-PromptAssistant-${GITHUB_REF_NAME}"
           mkdir -p "release/${name}/frontend"
 
-          cp -r backend img "release/${name}/"
+          cp -r backend docs img "release/${name}/"
           cp -r frontend/dist "release/${name}/frontend/"
-          cp CONTRIBUTING.md LICENSE README.md pyproject.toml serve.py uv.lock "release/${name}/"
+          cp LICENSE README.md pyproject.toml serve.py uv.lock "release/${name}/"
 
           # 環境依存の設定やキャッシュが紛れ込まないようにする(通常は checkout に含まれない)
           rm -f "release/${name}/backend/.env"
