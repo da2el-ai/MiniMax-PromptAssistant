@@ -79,9 +79,22 @@ const connClass = computed(() => {
   return llmOk.value ? 'conn--ok' : 'conn--ng'
 })
 
-/** Ctrl + Enter / Command + Enter で生成する。 */
+// ショートカットからコピーを呼ぶために ResultPanel を参照する
+const resultPanel = ref<InstanceType<typeof ResultPanel> | null>(null)
+
+/**
+ * Ctrl / Command + Enter で生成し、Alt / Option + Enter で生成結果をコピーする。
+ */
 function onKeydown(event: KeyboardEvent): void {
-  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+  if (event.key !== 'Enter') {
+    return
+  }
+  if (event.altKey) {
+    event.preventDefault()
+    void resultPanel.value?.copyPrompt()
+    return
+  }
+  if (event.ctrlKey || event.metaKey) {
     event.preventDefault()
     if (!loading.value) {
       void submit()
@@ -249,6 +262,7 @@ function resetAll(): void {
       </button>
 
       <ResultPanel
+        ref="resultPanel"
         :prompt="prompt"
         :warnings="warnings"
         :retries="retries"

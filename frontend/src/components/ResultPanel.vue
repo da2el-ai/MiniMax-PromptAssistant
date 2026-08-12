@@ -29,6 +29,17 @@ async function copyText(text: string, key: 'prompt' | 'json'): Promise<void> {
     copiedKey.value = ''
   }
 }
+
+/** 生成結果をコピーする。結果がまだないときは何もしない。 */
+async function copyPrompt(): Promise<void> {
+  if (!props.prompt) {
+    return
+  }
+  await copyText(props.prompt, 'prompt')
+}
+
+// ショートカットキーから呼べるようにする
+defineExpose({ copyPrompt })
 </script>
 
 <template>
