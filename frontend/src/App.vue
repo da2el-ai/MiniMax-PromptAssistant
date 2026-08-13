@@ -2,16 +2,30 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
 import { fetchHealth, generatePrompt } from '@/api/client'
-import ClearDialog from '@/components/ClearDialog.vue'
 import CommonFields from '@/components/CommonFields.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ImageDescFields from '@/components/ImageDescFields.vue'
 import ModeSelector from '@/components/ModeSelector.vue'
 import RefAssetList from '@/components/RefAssetList.vue'
 import ResultPanel from '@/components/ResultPanel.vue'
+import SavedPromptList from '@/components/SavedPromptList.vue'
 import ShotList from '@/components/ShotList.vue'
+import TitleField from '@/components/TitleField.vue'
 import type { GenerateRequest } from '@/types/api'
 import { createInitialRequest, normalizeAssetTag, requiredImageRoles } from '@/utils/form'
-import { clearStorage, loadRequest, loadResult, saveRequest, saveResult } from '@/utils/storage'
+import {
+  clearStorage,
+  loadRequest,
+  loadResult,
+  loadSavedPrompts,
+  loadTitle,
+  normalizeRequest,
+  saveRequest,
+  saveResult,
+  saveSavedPrompts,
+  saveTitle,
+  type SavedPrompt,
+} from '@/utils/storage'
 
 // 前回の入力内容があれば復元する
 const form = reactive<GenerateRequest>(loadRequest() ?? createInitialRequest())
@@ -22,7 +36,14 @@ const warnings = ref<string[]>(savedResult?.warnings ?? [])
 const retries = ref(savedResult?.retries ?? 0)
 const loading = ref(false)
 const error = ref('')
-const clearOpen = ref(false)
+
+// 保存機能。タイトルは入力の一部としてリロードをまたいで残す
+const title = ref(loadTitle())
+const savedPrompts = ref<SavedPrompt[]>(loadSavedPrompts())
+const titleSaved = ref(false)
+const titleError = ref('')
+
+watch(title, (value) => saveTitle(value))
 
 // 入力に変更があったら保存する。連続入力でも書き込みが増えすぎないよう少し待つ
 const SAVE_DELAY_MS = 300
@@ -231,15 +252,152 @@ async function submit(): Promise<void> {
   }
 }
 
-/** 入力と生成結果を初期状態に戻す。 */
+/** 入力と生成結果を初期状態に戻す。保存プロンプトは残す。 */
 function resetAll(): void {
-  clearOpen.value = false
   Object.assign(form, createInitialRequest(form.mode))
+  title.value = ''
   prompt.value = ''
   warnings.value = []
   retries.value = 0
   error.value = ''
+  titleError.value = ''
   clearStorage()
+}
+
+// ---- 保存プロンプト ----
+
+// 「保存しました」表示を戻すためのタイマー
+const SAVED_FLASH_MS = 1600
+let flashTimer: number | undefined
+
+function flashSaved(): void {
+  titleSaved.value = true
+  if (flashTimer !== undefined) {
+    window.clearTimeout(flashTimer)
+  }
+  flashTimer = window.setTimeout(() => {
+    titleSaved.value = false
+  }, SAVED_FLASH_MS)
+}
+
+/** 今の入力と生成結果を、指定したタイトルで保存する。同名があれば置き換える。 */
+function storePrompt(name: string): void {
+  const entry: SavedPrompt = {
+    title: name,
+    // normalizeRequest は値を作り直すので、フォームと参照を共有しない
+    request: normalizeRequest(form),
+    prompt: prompt.value,
+    warnings: [...warnings.value],
+    retries: retries.value,
+  }
+  // 同名を取り除いてから先頭に置くことで、上書きしたものが最新として並ぶ
+  const next = [entry, ...savedPrompts.value.filter((item) => item.title !== name)]
+  if (!saveSavedPrompts(next)) {
+    titleError.value = '保存できませんでした。ブラウザの保存領域が一杯の可能性があります。'
+    return
+  }
+  savedPrompts.value = next
+  titleError.value = ''
+  flashSaved()
+}
+
+/** 保存ボタンの入口。同名があれば上書き確認をはさむ。 */
+function requestSave(): void {
+  const name = title.value.trim()
+  if (name === '') {
+    titleError.value = 'タイトルを入力してください。'
+    return
+  }
+  titleError.value = ''
+  if (savedPrompts.value.some((item) => item.title === name)) {
+    dialog.value = { kind: 'overwrite', name }
+    return
+  }
+  storePrompt(name)
+}
+
+/** 保存プロンプトを入力とタイトルと生成結果に復元する。 */
+function restoreSaved(index: number): void {
+  const item = savedPrompts.value[index]
+  if (!item) {
+    return
+  }
+  Object.assign(form, normalizeRequest(item.request))
+  title.value = item.title
+  prompt.value = item.prompt
+  warnings.value = [...item.warnings]
+  retries.value = item.retries
+  error.value = ''
+  titleError.value = ''
+  // リロードしたときに復元した内容と食い違わないよう、直前の結果も更新する
+  saveResult({
+    prompt: item.prompt,
+    warnings: item.warnings,
+    retries: item.retries,
+    requestJson: requestJson.value,
+  })
+}
+
+function removeSaved(index: number): void {
+  const next = savedPrompts.value.filter((_, position) => position !== index)
+  saveSavedPrompts(next)
+  savedPrompts.value = next
+}
+
+// ---- 確認ダイアログ ----
+
+type DialogState =
+  | { kind: 'clear' }
+  | { kind: 'overwrite'; name: string }
+  | { kind: 'remove'; index: number }
+
+const dialog = ref<DialogState | null>(null)
+
+const dialogProps = computed(() => {
+  const current = dialog.value
+  if (current === null) {
+    return null
+  }
+  if (current.kind === 'clear') {
+    return {
+      title: '入力をクリアしますか?',
+      body:
+        '入力内容と生成結果が初期状態に戻ります。この操作は取り消せません。' +
+        '保存プロンプトは残ります。',
+      confirmLabel: 'クリアする',
+      danger: true,
+    }
+  }
+  if (current.kind === 'overwrite') {
+    return {
+      title: '上書きしますか?',
+      body: `「${current.name}」はすでに保存されています。今の入力と生成結果で上書きします。`,
+      confirmLabel: '上書きする',
+      danger: false,
+    }
+  }
+  const target = savedPrompts.value[current.index]
+  return {
+    title: '保存プロンプトを削除しますか?',
+    body: `「${target?.title ?? ''}」を削除します。この操作は取り消せません。`,
+    confirmLabel: '削除する',
+    danger: true,
+  }
+})
+
+function confirmDialog(): void {
+  const current = dialog.value
+  dialog.value = null
+  if (current === null) {
+    return
+  }
+  if (current.kind === 'clear') {
+    resetAll()
+  } else if (current.kind === 'overwrite') {
+    storePrompt(current.name)
+  } else {
+    removeSaved(current.index)
+  }
 }
 </script>
 
@@ -256,13 +414,14 @@ function resetAll(): void {
       <button type="button" class="btn" :disabled="llmChecking" @click="checkHealth">
         {{ llmChecking ? '確認中…' : '接続確認' }}
       </button>
-      <button type="button" class="btn" @click="clearOpen = true">入力をクリア</button>
+      <button type="button" class="btn" @click="dialog = { kind: 'clear' }">入力をクリア</button>
     </div>
   </header>
 
   <main class="main">
     <!-- form 要素にすると入力欄での Enter が生成を起動してしまうため div にする -->
     <div class="col col--form">
+      <TitleField v-model="title" :saved="titleSaved" :error="titleError" @save="requestSave" />
       <ModeSelector v-model="form.mode" />
       <CommonFields :form="form" />
       <ImageDescFields :images="form.images" :mode="form.mode" />
@@ -287,8 +446,19 @@ function resetAll(): void {
         :request-json="requestJson"
         :tall="form.mode === 'rf2va'"
       />
+
+      <SavedPromptList
+        :items="savedPrompts"
+        @restore="restoreSaved"
+        @remove="dialog = { kind: 'remove', index: $event }"
+      />
     </div>
   </main>
 
-  <ClearDialog v-if="clearOpen" @cancel="clearOpen = false" @confirm="resetAll" />
+  <ConfirmDialog
+    v-if="dialogProps"
+    v-bind="dialogProps"
+    @cancel="dialog = null"
+    @confirm="confirmDialog"
+  />
 </template>

@@ -1,6 +1,6 @@
 [project]
 name = "minimax-prompt-assistant"
-version = "1.2.0"
+version = "2.0.0"
 description = "動画生成 AI「MiniMax-H3」用の英語プロンプトを日本語入力から生成する"
 readme = "README.md"
 requires-python = ">=3.10"

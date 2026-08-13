@@ -865,7 +865,95 @@ button {
   border-radius: 7px;
 }
 
-/* ---------------- クリア確認ダイアログ ---------------- */
+/* ---------------- タイトルと保存プロンプト ---------------- */
+
+.title__row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.title__input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.title__save {
+  flex: none;
+  /* 「保存」と「保存しました」で幅が変わってレイアウトが揺れないようにする */
+  min-width: 96px;
+}
+
+.title__note {
+  margin: 8px 0 0;
+}
+
+.title__error {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--danger-hover-text);
+}
+
+.saved {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.saved__item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.saved__title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 11px;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--text-button);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-button);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.saved__title:hover {
+  background: oklch(0.95 0.005 85);
+  border-color: oklch(0.8 0.008 85);
+}
+
+.saved__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved__badge {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: var(--muted-2);
+  background: var(--input-bg-plain);
+}
+
+.saved__remove {
+  height: 34px;
+}
+
+/* ---------------- 確認ダイアログ ---------------- */
 
 .overlay {
   position: fixed;

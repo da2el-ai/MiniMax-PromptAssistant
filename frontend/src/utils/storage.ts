@@ -20,12 +20,24 @@ import { createInitialRequest } from '@/utils/form'
 
 const FORM_KEY = 'minimax-prompt-assistant:form:v1'
 const RESULT_KEY = 'minimax-prompt-assistant:result:v1'
+const SAVED_KEY = 'minimax-prompt-assistant:saved:v1'
+const TITLE_KEY = 'minimax-prompt-assistant:title:v1'
 
 export interface SavedResult {
   prompt: string
   warnings: string[]
   retries: number
   requestJson: string
+}
+
+/** タイトルを付けて保存したプロンプト 1 件分。 */
+export interface SavedPrompt {
+  title: string
+  request: GenerateRequest
+  /** 生成結果。まだ生成していない状態で保存した場合は空 */
+  prompt: string
+  warnings: string[]
+  retries: number
 }
 
 const VALID_MODES = new Set<string>(MODES.map((mode) => mode.value))
@@ -102,8 +114,12 @@ function toRefAsset(raw: unknown): RefAsset {
   }
 }
 
-/** 保存データを現在の形に整える。壊れていれば初期値で補う。 */
-function toRequest(raw: unknown): GenerateRequest {
+/** 保存データを現在の形に整える。壊れていれば初期値で補う。
+ *
+ * 値をすべて作り直すため、結果は元データと参照を共有しない。保存プロンプトを
+ * フォームへ復元するときは、この性質を使ってディープコピー代わりに使う。
+ */
+export function normalizeRequest(raw: unknown): GenerateRequest {
   const fallback = createInitialRequest()
   if (!isRecord(raw)) {
     return fallback
@@ -132,7 +148,7 @@ function toRequest(raw: unknown): GenerateRequest {
 export function loadRequest(): GenerateRequest | null {
   try {
     const saved = window.localStorage.getItem(FORM_KEY)
-    return saved === null ? null : toRequest(JSON.parse(saved))
+    return saved === null ? null : normalizeRequest(JSON.parse(saved))
   } catch {
     // 壊れたデータは無視して初期状態から始める
     return null
@@ -176,10 +192,73 @@ export function saveResult(result: SavedResult): void {
   }
 }
 
+function toSavedPrompt(raw: unknown): SavedPrompt | null {
+  const record = isRecord(raw) ? raw : {}
+  const title = asString(record.title).trim()
+  // タイトルは一覧の見出しであり同名判定のキーでもあるため、空の行は捨てる
+  if (title === '') {
+    return null
+  }
+  return {
+    title,
+    request: normalizeRequest(record.request),
+    prompt: asString(record.prompt),
+    warnings: asArray(record.warnings).map((warning) => asString(warning)),
+    retries: asNumber(record.retries, 0),
+  }
+}
+
+/** 保存プロンプトの一覧を読み込む。先頭が最新。 */
+export function loadSavedPrompts(): SavedPrompt[] {
+  try {
+    const saved = window.localStorage.getItem(SAVED_KEY)
+    if (saved === null) {
+      return []
+    }
+    return asArray(JSON.parse(saved))
+      .map(toSavedPrompt)
+      .filter((item) => item !== null)
+  } catch {
+    return []
+  }
+}
+
+/** 保存プロンプトの一覧を書き込む。容量オーバーなどで書けなければ false を返す。
+ *
+ * 利用者が意図して押した保存が失敗したことは伝える必要があるため、
+ * ほかの保存関数と違って結果を返す。
+ */
+export function saveSavedPrompts(items: SavedPrompt[]): boolean {
+  try {
+    window.localStorage.setItem(SAVED_KEY, JSON.stringify(items))
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function loadTitle(): string {
+  try {
+    return asString(window.localStorage.getItem(TITLE_KEY))
+  } catch {
+    return ''
+  }
+}
+
+export function saveTitle(title: string): void {
+  try {
+    window.localStorage.setItem(TITLE_KEY, title)
+  } catch {
+    // 保存領域が使えない場合(プライベートモードなど)は保存をあきらめる
+  }
+}
+
+/** 入力・生成結果・タイトルを消す。保存プロンプトは意図的に残す。 */
 export function clearStorage(): void {
   try {
     window.localStorage.removeItem(FORM_KEY)
     window.localStorage.removeItem(RESULT_KEY)
+    window.localStorage.removeItem(TITLE_KEY)
   } catch {
     // 何もしない
   }
