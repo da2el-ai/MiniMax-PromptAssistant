@@ -7,7 +7,7 @@ warnings は再生成せずに利用者へ伝える注意点。
 
 import re
 
-from models import GenerateRequest, Mode
+from models import AssetKind, GenerateRequest, Mode
 from prompt_builder import format_timestamp, main_field, section_keys
 
 SHOT_MARKER_RE = re.compile(r"\[Shot\s*(\d+)\]")
@@ -16,11 +16,19 @@ DIALOGUE_RE = re.compile(r"<d>(.*?)</d>", re.DOTALL)
 LANGUAGE_TAG_RE = re.compile(r"^\s*\[[^\]\n]+\]")
 VOICEOVER_PHRASE = "says in an off-screen voiceover"
 
-# RF2VA の参照ラベル。<d> や <scenetrans> のようなタグとは形が違う
-LABEL_RE = re.compile(r"<(Subject|Picture|Video|Audio)\s+(\d+)>")
+# RF2VA の参照ラベル。<d> や <scenetrans> のようなタグとは形が違う。
+# エイリアス(@hero_look)を拾う版は参照タグ使用時だけ使う。常に拾うと、画面内テキストの
+# 「@shop_official」のような文字列を未定義ラベルと誤検出してしまう
+LABEL_PATTERN = r"<(?:Subject|Picture|Video|Audio)\s+\d+>"
+ALIAS_PATTERN = r"@[A-Za-z0-9_]+"
+LABEL_RE = re.compile(LABEL_PATTERN)
+LABEL_WITH_ALIAS_RE = re.compile(f"{LABEL_PATTERN}|{ALIAS_PATTERN}")
+# @タグ 使用時に現れてはいけないネイティブラベル(<Subject N> は引き続き使う)
+NATIVE_ASSET_LABEL_RE = re.compile(r"<(?:Picture|Video|Audio)\s+\d+>")
 # retention_analysis の 1 行(例: <Subject 1> (appears in ...): fully_preserved - ...)
-RETENTION_LINE_RE = re.compile(
-  r"^<(Subject|Picture|Video|Audio)\s+(\d+)>[^:]*:\s*([A-Za-z_]+)", re.MULTILINE
+RETENTION_LINE_RE = re.compile(f"^({LABEL_PATTERN})[^:]*:\\s*([A-Za-z_]+)", re.MULTILINE)
+RETENTION_LINE_WITH_ALIAS_RE = re.compile(
+  f"^({LABEL_PATTERN}|{ALIAS_PATTERN})[^:]*:\\s*([A-Za-z_]+)", re.MULTILINE
 )
 TASK_TYPE_RE = re.compile(r"^\s*\[([^\]]+)\]")
 
@@ -200,14 +208,32 @@ def _check_on_screen_texts(request: GenerateRequest, body: str) -> list[str]:
   return violations
 
 
-def _check_rf2va(sections: dict[str, str], asset_labels: list[str]) -> list[str]:
+def _check_rf2va(
+  sections: dict[str, str], asset_labels: list[str], audio_labels: set[str]
+) -> list[str]:
   """フルリファレンスモード固有の検証。"""
   violations: list[str] = []
   definitions = sections["subject_definitions"]
+  uses_tags = any(label.startswith("@") for label in asset_labels)
+  label_re = LABEL_WITH_ALIAS_RE if uses_tags else LABEL_RE
+  retention_re = RETENTION_LINE_WITH_ALIAS_RE if uses_tags else RETENTION_LINE_RE
 
-  # 定義済みラベル。<Picture N> が別ラベルの出典としてのみ書かれる場合もあるため、
-  # 行頭に限らず subject_definitions 内のどこかに現れていれば定義済みとみなす
-  defined = {match.group(0) for match in LABEL_RE.finditer(definitions)}
+  # @タグ 使用時にネイティブラベルが出てきたら、LLM がエイリアスを潰している
+  if uses_tags:
+    for key in ("subject_definitions", "summary", "retention_analysis", "detailed_description"):
+      found = NATIVE_ASSET_LABEL_RE.search(sections[key])
+      if found:
+        listed = ", ".join(asset_labels)
+        violations.append(
+          f"{found.group(0)} appears in {key}, but the reference assets are identified by "
+          f"@aliases. Use only these labels for them, copied verbatim: {listed}. "
+          "Never write <Picture N>, <Video N> or <Audio N>."
+        )
+        break
+
+  # 定義済みラベル。<Picture N> や @tag が別ラベルの出典としてのみ書かれる場合も
+  # あるため、行頭に限らず subject_definitions 内のどこかに現れていれば定義済みとみなす
+  defined = {match.group(0) for match in label_re.finditer(definitions)}
   if not defined:
     violations.append(
       "subject_definitions must define at least one reference label such as <Subject 1>."
@@ -220,7 +246,7 @@ def _check_rf2va(sections: dict[str, str], asset_labels: list[str]) -> list[str]
 
   # 他のセクションで使われるラベルは定義済みでなければならない
   for key in ("summary", "retention_analysis", "detailed_description"):
-    for match in LABEL_RE.finditer(sections[key]):
+    for match in label_re.finditer(sections[key]):
       label = match.group(0)
       if label not in defined:
         violations.append(f"{label} is used in {key} but never defined in subject_definitions.")
@@ -241,24 +267,26 @@ def _check_rf2va(sections: dict[str, str], asset_labels: list[str]) -> list[str]
         violations.append(
           f'"{value}" is not a valid task type. Use only: {", ".join(sorted(TASK_TYPES))}.'
         )
-  if LABEL_RE.search(summary) is None and defined:
+  if label_re.search(summary) is None and defined:
     violations.append("summary must refer to the reference labels defined in subject_definitions.")
 
   # retention_analysis の関係マーカー
   retention = sections["retention_analysis"]
-  entries = list(RETENTION_LINE_RE.finditer(retention))
+  entries = list(retention_re.finditer(retention))
   if not entries:
     violations.append(
       "retention_analysis must contain one line per reference label, for example "
       "<Subject 1> (appears in [Shot 1]): fully_preserved - ..."
     )
   for match in entries:
-    label_type = match.group(1)
-    marker = match.group(3)
-    allowed = AUDIO_MARKERS if label_type == "Audio" else VISIBLE_MARKERS
+    label = match.group(1)
+    marker = match.group(2)
+    # @タグ は形からは種類が分からないので、アセットの種類から音声かどうかを引く
+    is_audio = label.startswith("<Audio ") or label in audio_labels
+    allowed = AUDIO_MARKERS if is_audio else VISIBLE_MARKERS
     if marker not in allowed:
       violations.append(
-        f'"{marker}" is not a valid relationship marker for <{label_type} {match.group(2)}>. '
+        f'"{marker}" is not a valid relationship marker for {label}. '
         f'Use one of: {", ".join(sorted(allowed))}.'
       )
   return violations
@@ -286,7 +314,12 @@ def validate(
   violations += _check_dialogues(request, body, speaker_ids)
   violations += _check_on_screen_texts(request, body)
   if request.mode is Mode.RF2VA:
-    violations += _check_rf2va(sections, asset_labels)
+    audio_labels = {
+      label
+      for asset, label in zip(request.ref_assets, asset_labels)
+      if asset.kind is AssetKind.AUDIO
+    }
+    violations += _check_rf2va(sections, asset_labels, audio_labels)
 
   # 警告(再生成はしない)
   if not request.ambience.none and sections["overall_soundscape"].strip() == "N/A":

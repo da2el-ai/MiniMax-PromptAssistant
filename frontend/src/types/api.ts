@@ -34,6 +34,8 @@ export interface RefAsset {
   kind: AssetKind
   role: string
   description: string
+  /** ComfyUI Context Loop の参照タグ名(@ は含めない)。空ならラベルは <Picture N> になる */
+  tag: string
 }
 
 export interface GenerateRequest {

@@ -97,6 +97,8 @@ function toRefAsset(raw: unknown): RefAsset {
     kind: (VALID_KINDS.has(kind) ? kind : 'image') as AssetKind,
     role: asString(record.role),
     description: asString(record.description),
+    // tag は後から追加した項目。古い保存データには存在しない
+    tag: asString(record.tag),
   }
 }
 

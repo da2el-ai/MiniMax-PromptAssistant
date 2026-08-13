@@ -3,10 +3,14 @@
 docs/SPEC.md の「5. API 仕様」に対応する。
 """
 
+import re
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
+
+# 参照タグ(ComfyUI Context Loop のエイリアス)に使える文字
+ASSET_TAG_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
 class CamelModel(BaseModel):
@@ -80,6 +84,22 @@ class RefAsset(CamelModel):
   kind: AssetKind
   role: str = Field(default="", description="役割(日本語)")
   description: str = Field(default="", description="内容の説明(日本語)")
+  tag: str = Field(
+    default="",
+    description=(
+      "ComfyUI Context Loop の参照タグ名(@ は含めない)。"
+      "指定するとラベルが <Picture N> ではなく @tag になる"
+    ),
+  )
+
+  @field_validator("tag")
+  @classmethod
+  def _normalize_tag(cls, tag: str) -> str:
+    # ComfyUI の表示どおり「@hero_look」の形で貼り付けられても受け付ける
+    value = tag.strip().lstrip("@")
+    if value and not ASSET_TAG_RE.match(value):
+      raise ValueError("参照タグは半角英数字とアンダースコアだけで指定してください")
+    return value
 
 
 class GenerateRequest(CamelModel):
@@ -116,6 +136,17 @@ class GenerateRequest(CamelModel):
     for index, shot in enumerate(self.shots[1:], start=2):
       if shot.cut_time_sec is not None and shot.cut_time_sec >= self.duration_sec:
         raise ValueError(f"Shot {index} のカット時刻は尺({self.duration_sec}秒)未満にしてください")
+
+    # 参照タグは全アセットで統一する。ネイティブラベルと混在させると、
+    # Context Loop 側でエイリアスを展開したときに番号が衝突する
+    tagged = [asset for asset in self.ref_assets if asset.tag]
+    if tagged and len(tagged) != len(self.ref_assets):
+      raise ValueError("参照タグを使う場合は、すべての参照アセットにタグを指定してください")
+    names = [asset.tag for asset in tagged]
+    duplicated = sorted({name for name in names if names.count(name) > 1})
+    if duplicated:
+      listed = ", ".join(f"@{name}" for name in duplicated)
+      raise ValueError(f"参照タグが重複しています: {listed}")
 
 
 class GenerateResponse(CamelModel):

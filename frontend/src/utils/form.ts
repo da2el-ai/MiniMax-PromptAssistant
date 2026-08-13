@@ -15,7 +15,12 @@ export function createEmptyShot(): Shot {
 }
 
 export function createEmptyAsset(): RefAsset {
-  return { kind: 'image', role: '', description: '' }
+  return { kind: 'image', role: '', description: '', tag: '' }
+}
+
+/** 参照タグを正規化する。ComfyUI の表示どおり @ 付きで貼り付けられても受け付ける。 */
+export function normalizeAssetTag(tag: string): string {
+  return tag.trim().replace(/^@+/, '')
 }
 
 export function createInitialRequest(mode: Mode = 'i2va'): GenerateRequest {

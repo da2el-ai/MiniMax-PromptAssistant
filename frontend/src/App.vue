@@ -10,7 +10,7 @@ import RefAssetList from '@/components/RefAssetList.vue'
 import ResultPanel from '@/components/ResultPanel.vue'
 import ShotList from '@/components/ShotList.vue'
 import type { GenerateRequest } from '@/types/api'
-import { createInitialRequest, requiredImageRoles } from '@/utils/form'
+import { createInitialRequest, normalizeAssetTag, requiredImageRoles } from '@/utils/form'
 import { clearStorage, loadRequest, loadResult, saveRequest, saveResult } from '@/utils/storage'
 
 // 前回の入力内容があれば復元する
@@ -149,6 +149,7 @@ const payload = computed<GenerateRequest>(() => {
             kind: asset.kind,
             role: asset.role.trim(),
             description: asset.description.trim(),
+            tag: normalizeAssetTag(asset.tag),
           }))
         : [],
   }
@@ -165,6 +166,21 @@ function validateForm(): string {
     const image = form.images.find((item) => item.role === role)
     if (!image?.description.trim()) {
       return '参照画像の説明を入力してください。'
+    }
+  }
+  if (form.mode === 'rf2va') {
+    // 参照タグはネイティブラベルと混在させられないので、全アセットで統一させる
+    const tags = form.refAssets.map((asset) => normalizeAssetTag(asset.tag))
+    if (tags.some((tag) => tag !== '') && tags.some((tag) => tag === '')) {
+      return '参照タグを使う場合は、すべての参照アセットにタグを入力してください。'
+    }
+    for (const tag of tags) {
+      if (tag !== '' && !/^[A-Za-z0-9_]+$/.test(tag)) {
+        return `参照タグ「${tag}」は半角英数字とアンダースコアだけで指定してください。`
+      }
+      if (tag !== '' && tags.filter((item) => item === tag).length > 1) {
+        return `参照タグ「@${tag}」が重複しています。`
+      }
     }
   }
   for (const [index, shot] of form.shots.entries()) {

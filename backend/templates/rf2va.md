@@ -34,6 +34,25 @@ The brief lists every source asset with its `<Picture N>` / `<Video N>` / `<Audi
 
 Once a label is assigned it keeps the same meaning across all sections.
 
+## `@alias` asset labels
+
+The brief may instead label its assets with `@alias` names such as `@hero_look` or `@voice`. When it does, **that alias is the label**. Copy it character for character, including the leading `@`, everywhere you would otherwise write `<Picture N>`, `<Video N>` or `<Audio N>`. Never rewrite an alias as a numbered label, and never use an alias the brief did not list.
+
+`<Subject N>` is unaffected: you still assign those numbers yourself, and an alias is cited as the source a subject comes from.
+
+```
+<Subject 1> is the young woman in @hero_look, with long black hair, a pink hair ribbon, and purple eyes.
+@background is the summer shopping street used as the scene background.
+@voice is the voice-timbre reference for <Subject 1> (S1).
+```
+
+Aliases follow the same section rules as numbered labels: every alias you use must appear in `subject_definitions`, and each one needs its own `retention_analysis` line.
+
+```
+<Subject 1> (appears in [Shot 1]): fully_preserved - the black hair, pink hair ribbon, and purple eyes are retained.
+@background (background in [Shot 1]): fully_preserved - the summer street and row of shops are retained.
+```
+
 # subject_definitions
 
 One line per referenced item that must be tracked separately later. Each line states what the label denotes, its reference role, and the main features to follow.

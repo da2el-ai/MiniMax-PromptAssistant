@@ -144,8 +144,23 @@ def assign_speaker_ids(shots: list[Shot]) -> dict[str, str]:
   return mapping
 
 
+def uses_asset_tags(assets: list[RefAsset]) -> bool:
+  """参照アセットを @タグ でラベル付けするかどうか。
+
+  タグは全アセットで統一する決まりなので、1 つでも欠けていれば連番ラベルを使う
+  (入力段階で models.py が弾くため、通常ここに中途半端な状態は来ない)。
+  """
+  return bool(assets) and all(asset.tag for asset in assets)
+
+
 def assign_asset_labels(assets: list[RefAsset]) -> list[str]:
-  """参照アセットに種類ごとの連番ラベル(<Picture 1> など)を割り当てる。"""
+  """参照アセットにラベルを割り当てる。
+
+  全アセットにタグがあれば ComfyUI Context Loop のエイリアス(@hero_look)を、
+  なければ種類ごとの連番ラベル(<Picture 1> など)を使う。
+  """
+  if uses_asset_tags(assets):
+    return [f"@{asset.tag}" for asset in assets]
   counters: dict[str, int] = {}
   labels: list[str] = []
   for asset in assets:
@@ -201,10 +216,25 @@ def _image_section(request: GenerateRequest) -> list[str]:
 
 def _asset_section(request: GenerateRequest, asset_labels: list[str]) -> list[str]:
   """RF2VA の参照アセット一覧を組み立てる。"""
-  lines: list[str] = ["## Reference assets — use exactly these labels and numbers"]
   if not request.ref_assets:
-    lines.append("No reference assets were provided.")
-    return lines
+    return [
+      "## Reference assets — use exactly these labels and numbers",
+      "No reference assets were provided.",
+    ]
+
+  lines: list[str]
+  if uses_asset_tags(request.ref_assets):
+    # @タグ は ComfyUI 側で <Picture N> に展開されるため、そのまま残させる
+    lines = [
+      "## Reference assets — use exactly these @alias labels",
+      "These labels are ComfyUI Context Loop aliases. Copy each one character for character, "
+      "including the leading `@`, everywhere you would otherwise write a numbered label. "
+      "Never convert an alias into `<Picture N>`, `<Video N>` or `<Audio N>`, and never invent "
+      "an alias that is not listed here.",
+    ]
+  else:
+    lines = ["## Reference assets — use exactly these labels and numbers"]
+
   for asset, label in zip(request.ref_assets, asset_labels):
     role = asset.role.strip() or "not specified"
     description = asset.description.strip() or "not provided"
